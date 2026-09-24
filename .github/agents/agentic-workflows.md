@@ -231,3 +231,4 @@ gh aw compile --validate
 - **Single-file output**: When creating a workflow, produce exactly **one** workflow `.md` file. Do not create separate documentation files (architecture docs, runbooks, usage guides, etc.). If documentation is needed, add a brief `## Usage` section inside the workflow file itself.
 - **Triggering runs**: Always use `gh aw run <workflow-name>` to trigger a workflow on demand — not `gh workflow run <file>.lock.yml`. `gh aw run` handles workflow resolution by short name, input parsing and validation, and correct run-tracking for agentic workflows. Use `--ref <branch>` to run on a specific branch.
 - **CLI commands reference**: For a complete guide on all `gh aw` commands and their MCP tool equivalents (for restricted environments), see `https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/cli-commands.md`
+- When creating or editing agentic workflow files, do not compile them. Only create or update the markdown workflow file.
