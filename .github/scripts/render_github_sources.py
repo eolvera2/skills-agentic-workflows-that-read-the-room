@@ -91,10 +91,11 @@ def link_text(item):
 
 
 def child_text(item, *names):
-    """Return the full text of the first matching child element."""
-    wanted = set(names)
-    for child in item:
-        if local_name(child.tag) in wanted:
+    """Return the full text of the first child matching `names`, in that priority order."""
+    for name in names:
+        for child in item:
+            if local_name(child.tag) != name:
+                continue
             text = "".join(child.itertext()).strip()
             if text:
                 return text
