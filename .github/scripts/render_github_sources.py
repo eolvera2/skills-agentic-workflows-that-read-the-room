@@ -14,6 +14,7 @@ entity-expansion attacks against `xml.etree`) are rejected instead of parsed.
 from __future__ import annotations
 
 import html
+import itertools
 import os
 import re
 import sys
@@ -28,6 +29,7 @@ TAG_RE = re.compile(r"<[^>]+>")
 SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 WHITESPACE_RE = re.compile(r"\s+")
 DOCTYPE_RE = re.compile(r"<!\s*(DOCTYPE|ENTITY)\b", re.IGNORECASE)
+ROOT_ELEMENT_RE = re.compile(r"<[A-Za-z_]")
 
 ITEM_TAGS = ("item", "entry")
 
@@ -61,6 +63,33 @@ def read_source(path):
         return handle.read(), None
 
 
+def declares_dtd(markup):
+    """Report whether the document prolog declares a DTD or entities.
+
+    Only the prolog is inspected: a `<!DOCTYPE ...>` string inside post content
+    is data, not a declaration, and must not disqualify the whole feed.
+    """
+    root = ROOT_ELEMENT_RE.search(markup)
+    prolog = markup[: root.start()] if root else markup
+    return bool(DOCTYPE_RE.search(prolog))
+
+
+def link_text(item):
+    """Return the entry URL, preferring the Atom `alternate` link."""
+    fallback = ""
+    for child in item:
+        if local_name(child.tag) != "link":
+            continue
+        value = "".join(child.itertext()).strip() or child.get("href") or ""
+        if not value:
+            continue
+        rel = child.get("rel")
+        if rel in (None, "", "alternate"):
+            return value
+        fallback = fallback or value
+    return fallback or child_text(item, "id")
+
+
 def child_text(item, *names):
     """Return the full text of the first matching child element."""
     wanted = set(names)
@@ -83,7 +112,7 @@ def render_feed(path, heading, source_label, source_url):
         lines += [problem, ""]
         return lines
 
-    if DOCTYPE_RE.search(markup):
+    if declares_dtd(markup):
         lines += ["Snapshot rejected: feed declares a DTD and was not parsed.", ""]
         return lines
 
@@ -93,14 +122,18 @@ def render_feed(path, heading, source_label, source_url):
         lines += ["Snapshot unreadable: %s" % error, ""]
         return lines
 
-    items = [el for el in root.iter() if local_name(el.tag) in ITEM_TAGS][:MAX_ITEMS]
+    items = list(
+        itertools.islice(
+            (el for el in root.iter() if local_name(el.tag) in ITEM_TAGS), MAX_ITEMS
+        )
+    )
     if not items:
         lines += ["Snapshot contained no entries.", ""]
         return lines
 
     for item in items:
         title = plain_text(child_text(item, "title")) or "(untitled)"
-        link = plain_text(child_text(item, "link", "id"))
+        link = plain_text(link_text(item))
         published = plain_text(child_text(item, "pubDate", "published", "updated"))
         summary = truncate(
             plain_text(child_text(item, "description", "summary", "encoded", "content")),
@@ -164,8 +197,10 @@ def main(argv):
     )
 
     digest = os.path.join(sources_dir, "github-sources.md")
-    with open(digest, "w", encoding="utf-8") as handle:
+    staging = digest + ".tmp"
+    with open(staging, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines).rstrip() + "\n")
+    os.replace(staging, digest)
 
     print("wrote " + digest)
     return 0
